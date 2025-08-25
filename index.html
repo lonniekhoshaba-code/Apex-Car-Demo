@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Apex Cars Demo</title>
+    <style>
+      body, html { margin: 0; padding: 0; height: 100%; }
+      #root { width: 100%; height: 100%; }
+      button {
+        position: absolute;
+        z-index: 1;
+        top: 20px;
+        left: 20px;
+        padding: 10px 20px;
+      }
+    </style>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Three.js + React Three Fiber + Drei -->
+    <script src="https://unpkg.com/three/build/three.min.js"></script>
+    <script src="https://unpkg.com/@react-three/fiber/dist/react-three-fiber.umd.js"></script>
+    <script src="https://unpkg.com/@react-three/drei/dist/drei.umd.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/javascript">
+      const { useState } = React;
+      const { Canvas } = ReactThreeFiber;
+      const { OrbitControls, TransformControls } = drei;
+
+      function Car({ lifted }) {
+        return React.createElement(
+          TransformControls,
+          null,
+          React.createElement("mesh",
+            { position: [0, lifted ? 3 : 0, 0] },
+            React.createElement("boxGeometry", { args: [2, 1, 4] }),
+            React.createElement("meshStandardMaterial", { color: "orange" })
+          )
+        );
+      }
+
+      function Lift({ lifted }) {
+        return React.createElement(
+          "mesh",
+          { position: [0, lifted ? 1.5 : -0.5, 0] },
+          React.createElement("boxGeometry", { args: [4, 0.5, 6] }),
+          React.createElement("meshStandardMaterial", { color: "gray" })
+        );
+      }
+
+      function App() {
+        const [lifted, setLifted] = useState(false);
+
+        return React.createElement(
+          "div",
+          { style: { width: "100vw", height: "100vh" } },
+          React.createElement(
+            "button",
+            { onClick: () => setLifted(!lifted) },
+            lifted ? "Lower Car" : "Lift Car"
+          ),
+          React.createElement(
+            Canvas,
+            { camera: { position: [6, 6, 6], fov: 50 } },
+            React.createElement("ambientLight", { intensity: 0.5 }),
+            React.createElement("directionalLight", { position: [5, 5, 5] }),
+            React.createElement(OrbitControls, null),
+            React.createElement(Lift, { lifted }),
+            React.createElement(Car, { lifted })
+          )
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(
+        React.createElement(App)
+      );
+    </script>
+  </body>
+</html>
