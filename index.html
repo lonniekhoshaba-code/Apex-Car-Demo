@@ -1,105 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Apex Cars Demo</title>
-    <style>
-      body, html { margin: 0; padding: 0; height: 100%; }
-      #root { width: 100%; height: 100%; }
-      button {
-        position: absolute;
-        z-index: 1;
-        top: 20px;
-        left: 20px;
-        padding: 10px 20px;
-      }
-    </style>
-    <!-- React & ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Three.js + React Three Fiber + Drei -->
-    <script src="https://unpkg.com/three/build/three.min.js"></script>
-    <script src="https://unpkg.com/@react-three/fiber/dist/react-three-fiber.umd.js"></script>
-    <script src="https://unpkg.com/@react-three/drei/dist/drei.umd.js"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="text/javascript">
-const { useState } = React;
+<head>
+<meta charset="UTF-8">
+<title>Apex Cars Simulator Ultimate</title>
+<style>
+body, html { margin:0; padding:0; height:100%; overflow:hidden; font-family:sans-serif; }
+#root { width:100%; height:100%; }
+#sidebar {
+  position:absolute; left:0; top:0; width:250px; height:100%;
+  background:rgba(50,50,50,0.95); color:white; padding:10px; z-index:2;
+  overflow-y:auto;
+}
+#sidebar button { display:block; margin:6px 0; width:100%; }
+#liftButton, #dynoButton, #saveButton, #loadButton { position:absolute; left:260px; padding:10px 20px; z-index:2; }
+#liftButton { top:20px; }
+#dynoButton { top:60px; }
+#saveButton { top:100px; }
+#loadButton { top:140px; }
+#aiMessages, #stats { background:rgba(255,255,255,0.1); padding:5px; margin-top:5px; font-size:12px; max-height:100px; overflow:auto; }
+#dynoChart { width:200px; height:100px; background:#222; margin-top:5px; padding:5px; position:relative; }
+#dynoBar { width:0%; height:100%; background:#0f0; transition: width 1s ease; }
+label { display:block; margin-top:6px; }
+input[type=range] { width:100%; }
+</style>
+
+<!-- React & ReactDOM -->
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<!-- Three.js + R3F + Drei -->
+<script src="https://unpkg.com/three/build/three.min.js"></script>
+<script src="https://unpkg.com/@react-three/fiber/dist/react-three-fiber.umd.js"></script>
+<script src="https://unpkg.com/@react-three/drei/dist/drei.umd.js"></script>
+</head>
+<body>
+
+<div id="sidebar">
+  <h3>Parts Menu</h3>
+  <button onclick="togglePart('exhaust')">Exhaust</button>
+  <button onclick="togglePart('spoiler')">Spoiler</button>
+  <button onclick="togglePart('hood')">Hood</button>
+  <button onclick="togglePart('engine')">Engine</button>
+  <button onclick="togglePart('turbo')">Turbo</button>
+  
+  <h4>AI Co-Pilot</h4>
+  <div id="aiMessages"></div>
+  <button onclick="aiTip()">Get Tip</button>
+
+  <h4>Engine Tuning</h4>
+  <label>Ignition Timing: <span id="timingVal">0°</span></label>
+  <input type="range" id="timing" min="-10" max="10" value="0" step="1" oninput="updateDynoParams()">
+  <label>Turbo PSI: <span id="psiVal">0</span></label>
+  <input type="range" id="psi" min="0" max="25" value="0" step="1" oninput="updateDynoParams()">
+  <label>Air-Fuel Ratio: <span id="afrVal">14.7</span></label>
+  <input type="range" id="afr" min="10" max="18" value="14.7" step="0.1" oninput="updateDynoParams()">
+
+  <h4>Car Stats</h4>
+  <div id="stats"></div>
+
+  <h4>Dyno Chart</h4>
+  <div id="dynoChart"><div id="dynoBar"></div></div>
+
+  <h4>Car Colors</h4>
+  <input type="color" id="carColor" value="#FF8000" onchange="updateCarColor(this.value)">
+</div>
+
+<button id="liftButton" onclick="toggleLift()">Lift Car</button>
+<button id="dynoButton" onclick="runDyno()">Dyno</button>
+<button id="saveButton" onclick="saveCar()">Save Car</button>
+<button id="loadButton" onclick="loadCar()">Load Car</button>
+
+<div id="root"></div>
+
+<script type="text/javascript">
 const { Canvas } = ReactThreeFiber;
 const { OrbitControls, TransformControls } = drei;
 
-function Car({ lifted, parts }) {
-  return React.createElement(
-    React.Fragment,
-    null,
-    React.createElement(
-      TransformControls,
-      null,
-      React.createElement("mesh",
-        { position: [0, lifted ? 3 : 0, 0] },
-        React.createElement("boxGeometry", { args: [2, 1, 4] }),
-        React.createElement("meshStandardMaterial", { color: "orange" })
+// Global state
+let lifted = false;
+let parts = [];
+let carColor = "#FF8000";
+let savedCar = null;
+let dynoParams = { timing:0, turbo:0, afr:14.7 };
+
+// Lift toggle
+window.toggleLift = () => { lifted = !lifted; renderApp(); };
+
+// Parts toggle
+window.togglePart = (partName) => {
+  parts = parts.includes(partName) ? parts.filter(p=>p!==partName) : [...parts, partName];
+  renderApp();
+  updateStats();
+};
+
+// Update car color
+window.updateCarColor = (color) => { carColor = color; renderApp(); };
+
+// Dyno tuning sliders
+window.updateDynoParams = () => {
+  dynoParams.timing = parseInt(document.getElementById("timing").value);
+  dynoParams.turbo = parseInt(document.getElementById("psi").value);
+  dynoParams.afr = parseFloat(document.getElementById("afr").value);
+  document.getElementById("timingVal").innerText = dynoParams.timing + "°";
+  document.getElementById("psiVal").innerText = dynoParams.turbo;
+  document.getElementById("afrVal").innerText = dynoParams.afr;
+  updateStats();
+};
+
+// Dyno run
+window.runDyno = () => {
+  const baseHP = 120 + parts.length*15;
+  const timingEffect = dynoParams.timing * 2;
+  const turboEffect = dynoParams.turbo * 3;
+  const afrEffect = -Math.abs(dynoParams.afr - 14.7) * 5;
+  const totalHP = baseHP + timingEffect + turboEffect + afrEffect;
+  const totalTorque = 200 + parts.length*20 + timingEffect*1.2 + turboEffect*1.5 + afrEffect*1.1;
+  alert(`Dyno Run:\nHP: ${Math.round(totalHP)}\nTorque: ${Math.round(totalTorque)} Nm`);
+  document.getElementById("dynoBar").style.width = Math.min(100,totalHP/2)+"%";
+  updateStats(totalHP, totalTorque);
+};
+
+// Update stats display
+function updateStats(hpOverride=null, torqueOverride=null){
+  const baseHP = 120 + parts.length*15;
+  const hp = hpOverride!==null ? hpOverride : baseHP;
+  const baseSpeed = 140;
+  const speed = baseSpeed + parts.length*5 + dynoParams.turbo*2;
+  const torque = torqueOverride!==null ? torqueOverride : 200 + parts.length*20;
+  document.getElementById("stats").innerHTML = `HP: ${Math.round(hp)}<br>Speed: ${Math.round(speed)} km/h<br>Torque: ${Math.round(torque)} Nm`;
+}
+
+// AI co-pilot
+window.aiTip = () => {
+  let msg;
+  if(parts.includes("turbo") && !parts.includes("engine")) msg="Add a new engine to handle the turbo!";
+  else if(parts.length===0) msg="Start by adding parts to your car!";
+  else msg="Looks good! Try running the dyno!";
+  const div = document.getElementById("aiMessages");
+  div.innerHTML += "<div>"+msg+"</div>";
+  div.scrollTop = div.scrollHeight;
+};
+
+// Save/load
+window.saveCar = () => { savedCar = { parts: [...parts], color: carColor, dynoParams:{...dynoParams} }; alert("Car saved!"); };
+window.loadCar = () => { if(savedCar){ parts = [...savedCar.parts]; carColor = savedCar.color; dynoParams = {...savedCar.dynoParams}; renderApp(); updateStats(); alert("Car loaded!"); } };
+
+// Car component
+function Car(){
+  return React.createElement(React.Fragment,null,
+    React.createElement("mesh",{position:[0,lifted?2.5:0.5,0]},
+      React.createElement("boxGeometry",{args:[3,1,5]}),
+      React.createElement("meshStandardMaterial",{color:carColor})
+    ),
+    React.createElement("mesh",{position:[0,lifted?3.25:1.25,0]},
+      React.createElement("boxGeometry",{args:[2,0.75,3]}),
+      React.createElement("meshStandardMaterial",{color:carColor})
+    ),
+    [[-1.2,-0.2,-2],[1.2,-0.2,-2],[-1.2,-0.2,2],[1.2,-0.2,2]].map((pos,i)=>
+      React.createElement("mesh",{position:[pos[0],lifted?pos[1]+2.5:pos[1],pos[2]],rotation:[0,0,Math.PI/2],key:i},
+        React.createElement("cylinderGeometry",{args:[0.5,0.5,0.3,16]}),
+        React.createElement("meshStandardMaterial",{color:"black"})
       )
     ),
-    // Add parts
-    parts.includes("exhaust") &&
-    React.createElement("mesh",
-      { position: [0, lifted ? 2.2 : -0.8, -2], rotation: [-Math.PI / 2, 0, 0] },
-      React.createElement("cylinderGeometry", { args: [0.1, 0.1, 2, 16] }),
-      React.createElement("meshStandardMaterial", { color: "silver" })
+    parts.includes("exhaust") && React.createElement(TransformControls,null,
+      React.createElement("mesh",{position:[0,lifted?2.2:-0.8,-2.5]},
+        React.createElement("cylinderGeometry",{args:[0.1,0.1,2,16]}),
+        React.createElement("meshStandardMaterial",{color:"silver"})
+      )
+    ),
+    parts.includes("spoiler") && React.createElement(TransformControls,null,
+      React.createElement("mesh",{position:[0,lifted?4:0.8,2]},
+        React.createElement("boxGeometry",{args:[2,0.2,0.5]}),
+        React.createElement("meshStandardMaterial",{color:"black"})
+      )
+    ),
+    parts.includes("hood") && React.createElement(TransformControls,null,
+      React.createElement("mesh",{position:[0,lifted?3.5:0.5,-1.5]},
+        React.createElement("boxGeometry",{args:[2,0.2,1]}),
+        React.createElement("meshStandardMaterial",{color:"red"})
+      )
+    ),
+    parts.includes("engine") && React.createElement(TransformControls,null,
+      React.createElement("mesh",{position:[0,lifted?1.5:0.2,0]},
+        React.createElement("boxGeometry",{args:[1.5,0.5,1]}),
+        React.createElement("meshStandardMaterial",{color:"gray"})
+      )
+    ),
+    parts.includes("turbo") && React.createElement(TransformControls,null,
+      React.createElement("mesh",{position:[0,lifted?2:0,-1]},
+        React.createElement("cylinderGeometry",{args:[0.3,0.3,0.5,16]}),
+        React.createElement("meshStandardMaterial",{color:"purple"})
+      )
     )
   );
 }
 
-function Lift({ lifted }) {
-  return React.createElement(
-    "mesh",
-    { position: [0, lifted ? 1.5 : -0.5, 0] },
-    React.createElement("boxGeometry", { args: [4, 0.5, 6] }),
-    React.createElement("meshStandardMaterial", { color: "gray" })
+// Lift platform
+function Lift(){
+  return React.createElement("mesh",{position:[0,lifted?1.5:-0.5,0]},
+    React.createElement("boxGeometry",{args:[4,0.5,6]}),
+    React.createElement("meshStandardMaterial",{color:"gray"})
   );
 }
 
-function App() {
-  const [lifted, setLifted] = useState(false);
-  const [parts, setParts] = useState([]);
-
-  const togglePart = (partName) => {
-    setParts(parts.includes(partName) 
-      ? parts.filter(p => p !== partName) 
-      : [...parts, partName]);
-  }
-
-  return React.createElement(
-    "div",
-    { style: { width: "100vw", height: "100vh" } },
-    // Buttons
-    React.createElement(
-      "button",
-      { onClick: () => setLifted(!lifted) },
-      lifted ? "Lower Car" : "Lift Car"
-    ),
-    React.createElement(
-      "button",
-      { onClick: () => togglePart("exhaust"), style: { top: 60, left: 20, position: "absolute", zIndex:1 } },
-      parts.includes("exhaust") ? "Remove Exhaust" : "Add Exhaust"
-    ),
-    React.createElement(
-      Canvas,
-      { camera: { position: [6, 6, 6], fov: 50 } },
-      React.createElement("ambientLight", { intensity: 0.5 }),
-      React.createElement("directionalLight", { position: [5, 5, 5] }),
-      React.createElement(OrbitControls, null),
-      React.createElement(Lift, { lifted }),
-      React.createElement(Car, { lifted, parts })
-    )
+// Main scene
+function App(){
+  return React.createElement(Canvas,{camera:{position:[8,6,8],fov:50}},
+    React.createElement("ambientLight",{intensity:0.5}),
+    React.createElement("directionalLight",{position:[5,5,5]}),
+    React.createElement(OrbitControls,null),
+    React.createElement(Lift,null),
+    React.createElement(Car,null)
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  React.createElement(App)
-);
+// Render
+function renderApp(){
+  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+}
+renderApp();
+updateStats();
 </script>
-  </body>
+</body>
 </html>
